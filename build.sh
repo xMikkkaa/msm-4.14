@@ -6,8 +6,8 @@
 
 SECONDS=0 # builtin bash timer
 BRANCH="Azure"
-ZIPNAME="RotersOS-kernel_A11-A12.zip"
-TC_DIR="$(pwd)/tc/clang-20"
+ZIPNAME="RotersOS-kernel_A11-A16.zip"
+TC_DIR="/home/mik/xMik-Project/toolchains/neutron-clang"
 AK3_DIR="$(pwd)/android/AnyKernel3"
 DEFCONFIG="surya_defconfig"
 
@@ -48,16 +48,14 @@ sync_repo() {
 }
 
 if [[ $1 = "-u" || $1 = "--update" ]]; then
-    sync_repo $AK3_DIR "https://github.com/xradens/AnyKernel3.git" "$BRANCH" true
-    sync_repo $TC_DIR "https://bitbucket.org/rdxzv/clang-standalone.git" "20" true
+    sync_repo $AK3_DIR "https://github.com/xradens/AnyKernel3.git" "roters" true
 	exit
 else
-    sync_repo $AK3_DIR "https://github.com/xradens/AnyKernel3.git" "$BRANCH" false
-    sync_repo $TC_DIR "https://bitbucket.org/rdxzv/clang-standalone.git" "20" false
+    sync_repo $AK3_DIR "https://github.com/xradens/AnyKernel3.git" "roters" false
 fi
 
-if [ ! -d "$AK3_DIR" ] || [ ! -d "$TC_DIR" ]; then
-    echo "Error: Required directories are missing. Aborting the build process."
+if [ ! -d "$AK3_DIR" ]; then
+    echo "Error: AnyKernel3 directory is missing. Aborting the build process."
     exit 1
 fi
 
@@ -85,7 +83,7 @@ for arg in "$@"; do
 			;;
 		-s|--su)
 			ENABLE_KSU=true
-			ZIPNAME="${ZIPNAME/RotersOS-kernel_A11-A12/RotersOS-kernel_A11-A12-KSU+SuSFS}"
+			ZIPNAME="${ZIPNAME/RotersOS-kernel_A11-A16/RotersOS-kernel_A11-A16-KSU+SuSFS}"
 			;;
 		*)
 			echo "Unknown argument: $arg"
@@ -126,9 +124,9 @@ if [ -f "$kernel" ] && [ -f "$dtb" ] && [ -f "$dtbo" ]; then
 	cp $kernel $dtb $dtbo AnyKernel3
 	sed -i "s/device\.name1=.*/device.name1=surya/" AnyKernel3/anykernel.sh
 	sed -i "s/device\.name2=.*/device.name2=karna/" AnyKernel3/anykernel.sh
-	sed -i "s/supported\.versions=.*/supported.versions=11-12/" AnyKernel3/anykernel.sh
+	sed -i "s/supported\.versions=.*/supported.versions=11-16/" AnyKernel3/anykernel.sh
 	cd AnyKernel3
-	git checkout $BRANCH &> /dev/null
+	git checkout roters &> /dev/null
 	zip -r9 "../$ZIPNAME" * -x .git modules\* patch\* ramdisk\* README.md *placeholder
 	cd ..
 	rm -rf AnyKernel3
