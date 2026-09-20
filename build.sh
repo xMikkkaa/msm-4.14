@@ -5,7 +5,6 @@
 # Copyright (C) 2025 xradens
 
 SECONDS=0 # builtin bash timer
-BRANCH="Azure"
 ZIPNAME="RotersOS-kernel_A11-A16.zip"
 TC_DIR="/home/mik/xMik-Project/toolchains/neutron-clang"
 AK3_DIR="$(pwd)/android/AnyKernel3"
@@ -74,6 +73,7 @@ if [[ $1 = "-rf" || $1 = "--regen-full" ]]; then
 fi
 
 CLEAN_BUILD=false
+DIRTY_BUILD=false
 ENABLE_KSU=false
 
 for arg in "$@"; do
@@ -81,10 +81,12 @@ for arg in "$@"; do
 		-c|--clean)
 			CLEAN_BUILD=true
 			;;
+		-d|--dirty)
+			DIRTY_BUILD=true
+			;;
 		-s|--su)
 			ENABLE_KSU=true
 			ZIPNAME="${ZIPNAME/RotersOS-kernel_A11-A16/RotersOS-kernel_A11-A16-KSU+SuSFS}"
-			ZIPNAME="${ZIPNAME/Azure-surya/Azure-KSU-surya}"
 			;;
 		*)
 			echo "Unknown argument: $arg"
@@ -96,24 +98,20 @@ done
 if $CLEAN_BUILD; then
 	echo "Cleaning output directory..."
 	rm -rf out
+elif $DIRTY_BUILD; then
+	echo "Dirty build (incremental, skipping clean)..."
 fi
 
-if $ENABLE_KSU; then
-	echo "Building with KSU support..."
-	KSU_DEFCONFIG="ksu_${DEFCONFIG}"
-	KSU_DEFCONFIG_PATH="arch/arm64/configs/${KSU_DEFCONFIG}"
-	cp arch/arm64/configs/$DEFCONFIG $KSU_DEFCONFIG_PATH
-	sed -i 's/# CONFIG_KSU is not set/CONFIG_KSU=y/g' $KSU_DEFCONFIG_PATH
-	trap '[[ -f $KSU_DEFCONFIG_PATH ]] && rm -f $KSU_DEFCONFIG_PATH' EXIT
+mkdir -p out
+
+# Always regenerate .config from defconfig
+if [ -f "out/.config" ]; then
+	rm -f out/.config
 fi
 
 echo -e "\nStarting compilation...\n"
-if $ENABLE_KSU; then
-	make $KSU_DEFCONFIG
-else
-	make $DEFCONFIG
-fi
-make -j$(nproc --all) LLVM=1 Image.gz dtb.img dtbo.img 2> >(tee log.txt >&2) || exit $?
+make $DEFCONFIG
+make -j$(nproc --all) LLVM=1 Image.gz dtb.img dtbo.img 2>&1 | tee out/build.log || exit ${PIPESTATUS[0]}
 
 kernel="out/arch/arm64/boot/Image.gz"
 dtb="out/arch/arm64/boot/dtb.img"
