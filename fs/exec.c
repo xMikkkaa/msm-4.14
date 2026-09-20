@@ -48,6 +48,9 @@
 #include <linux/pid_namespace.h>
 #include <linux/module.h>
 #include <linux/namei.h>
+#ifdef CONFIG_KSU_SUSFS
+#include <linux/susfs_def.h>
+#endif
 #include <linux/mount.h>
 #include <linux/security.h>
 #include <linux/syscalls.h>
@@ -1766,12 +1769,27 @@ static noinline bool is_lmkd_reinit(struct user_arg_ptr *argv)
 }
 #endif
 
-#ifdef CONFIG_KSU
-extern bool ksu_execveat_hook __read_mostly;
+#ifdef CONFIG_KSU_SUSFS
+extern struct static_key_true ksu_su_compat_enabled;
+extern struct static_key_true susfs_is_sdcard_android_data_not_decrypted;
+extern bool __ksu_is_allow_uid_for_current(uid_t uid);
 extern int ksu_handle_execveat(int *fd, struct filename **filename_ptr, void *argv,
 			void *envp, int *flags);
-extern int ksu_handle_execveat_sucompat(int *fd, struct filename **filename_ptr,
-				 void *argv, void *envp, int *flags);
+extern int ksu_handle_execveat_sucompat(int *fd, struct filename **filename_ptr, void *argv,
+				void *envp, int *flags);
+extern int ksu_handle_post_execveat_sucompat(int *fd, struct filename **filename_ptr, void *argv,
+				void *envp, int *flags, int *retval);
+
+static noinline int susfs_ksu_handle_execveat_helper(int *fd, struct filename **filename_ptr, void *argv, void *envp, int *flags)
+{
+	if (static_branch_likely(&ksu_su_compat_enabled)) {
+		if (static_branch_unlikely(&susfs_is_sdcard_android_data_not_decrypted))
+			return ksu_handle_execveat(fd, filename_ptr, argv, envp, flags);
+		else
+			return ksu_handle_execveat_sucompat(fd, filename_ptr, argv, envp, flags);
+	}
+	return -EINVAL;
+}
 #endif
 
 /*
@@ -1787,16 +1805,21 @@ static int do_execveat_common(int fd, struct filename *filename,
 	struct file *file;
 	struct files_struct *displaced;
 	int retval;
-
-#ifdef CONFIG_KSU
-	if (unlikely(ksu_execveat_hook))
-		ksu_handle_execveat(&fd, &filename, &argv, &envp, &flags);
-	else
-		ksu_handle_execveat_sucompat(&fd, &filename, &argv, &envp, &flags);
+#ifdef CONFIG_KSU_SUSFS
+	bool is_su_session = false;
 #endif
 
 	if (IS_ERR(filename))
 		return PTR_ERR(filename);
+
+#ifdef CONFIG_KSU_SUSFS
+	if (likely(susfs_is_current_proc_no_su()))
+		goto orig_flow;
+
+	is_su_session = !susfs_ksu_handle_execveat_helper(&fd, &filename, &argv, &envp, &flags);
+
+orig_flow:
+#endif
 
 	/*
 	 * We move the actual failure in case of RLIMIT_NPROC excess from
@@ -1954,6 +1977,10 @@ out_unmark:
 	current->fs->in_exec = 0;
 	current->in_execve = 0;
 
+#ifdef CONFIG_KSU_SUSFS
+	if (unlikely(is_su_session))
+		(void)ksu_handle_post_execveat_sucompat(&fd, &filename, &argv, &envp, &flags, &retval);
+#endif
 out_free:
 	free_bprm(&bprm);
 	kfree(pathbuf);
