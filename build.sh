@@ -84,6 +84,7 @@ for arg in "$@"; do
 		-s|--su)
 			ENABLE_KSU=true
 			ZIPNAME="${ZIPNAME/RotersOS-kernel_A11-A16/RotersOS-kernel_A11-A16-KSU+SuSFS}"
+			ZIPNAME="${ZIPNAME/Azure-surya/Azure-KSU-surya}"
 			;;
 		*)
 			echo "Unknown argument: $arg"
